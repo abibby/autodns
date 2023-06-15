@@ -19,9 +19,13 @@ func main() {
 	domains := map[string][]string{}
 
 	for _, d := range strings.Split(os.Getenv("DOMAINS"), ",") {
+		if d == "" {
+			continue
+		}
 		parts := strings.SplitN(d, ".", 2)
 		if len(parts) < 2 {
 			log.Printf("invalid domain %s, must contain subdomain", d)
+			continue
 		}
 		host, ok := domains[parts[1]]
 		if !ok {
@@ -78,11 +82,12 @@ func updateDNSRecords(registrars []Registrar, domains map[string][]string, ip st
 			if !has {
 				continue
 			}
-			log.Printf("update %s", domain)
+			log.Printf(" start update for %s", domain)
 			err = r.UpdateDomain(ip, domain, names)
 			if err != nil {
 				log.Print(err)
 			}
+			log.Printf("finish update for %s", domain)
 		}
 	}
 }

@@ -79,12 +79,16 @@ func (c *Client) doRequest(method, path string, body, v any) error {
 	if err != nil {
 		return err
 	}
-
+	easyDNSErr := &Error{}
+	err = json.Unmarshal(b, easyDNSErr)
+	if err == nil && easyDNSErr.Body != nil {
+		return easyDNSErr
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("request failed with status %s, %s", resp.Status, b)
 	}
 
-	// fmt.Printf("%s\n", b)
+	// fmt.Printf("%s\n%s\n\n", resp.Status, b)
 
 	return json.Unmarshal(b, v)
 }

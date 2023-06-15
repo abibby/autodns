@@ -14,7 +14,7 @@ type EasyDNS struct {
 var _ Registrar = (*EasyDNS)(nil)
 
 func (e *EasyDNS) Load() error {
-	e.client = easydns.NewClient(os.Getenv("EASYDNS_TOKEN"), os.Getenv("EASYDNS_KEY"), os.Getenv("EASYDNS_ENVIRONMENT"))
+	e.client = easydns.NewClient(os.Getenv("EASYDNS_TOKEN"), os.Getenv("EASYDNS_KEY"), "prod")
 
 	u, err := e.client.User()
 	if err != nil {
