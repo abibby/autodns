@@ -1,15 +1,11 @@
 package main
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/abibby/bob/set"
-	"github.com/alyx/go-daddy/daddy"
 	"github.com/joho/godotenv"
 )
 
@@ -19,88 +15,74 @@ type IP struct {
 
 func main() {
 	godotenv.Load("./.env")
-	domains := set.New[string]()
+
+	domains := map[string][]string{}
 
 	for _, d := range strings.Split(os.Getenv("DOMAINS"), ",") {
-		domains.Add(strings.TrimSpace(d))
+		parts := strings.SplitN(d, ".", 2)
+		if len(parts) < 2 {
+			log.Printf("invalid domain %s, must contain subdomain", d)
+		}
+		host, ok := domains[parts[1]]
+		if !ok {
+			host = make([]string, 0, 1)
+		}
+		domains[parts[1]] = append(host, parts[0])
 	}
-	ip := publicIP()
-	err := updateGodaddy(ip, domains)
+
+	registrars := []Registrar{
+		&Godaddy{},
+		&EasyDNS{},
+	}
+
+	ticker := time.NewTicker(time.Hour)
+	ip, err := publicIP()
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+	} else {
+		updateDNSRecords(registrars, domains, ip)
 	}
-}
-
-func publicIP() string {
-	req, err := http.Get("http://ip-api.com/json/")
-	if err != nil {
-		return err.Error()
-	}
-	defer req.Body.Close()
-
-	body, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		return err.Error()
-	}
-
-	var ip IP
-	json.Unmarshal(body, &ip)
-
-	return ip.Query
-}
-
-func updateGodaddy(ip string, domains set.Set[string]) error {
-	client, err := daddy.NewClient(os.Getenv("GODADDY_KEY"), os.Getenv("GODADDY_SECRET"), false)
-	if err != nil {
-		return err
-	}
-
-	myDomains, err := client.Domains.List([]string{"ACTIVE"}, nil, 0, "", nil, "")
-	if err != nil {
-		return err
-	}
-
-	for _, value := range myDomains {
-		if !domains.Has(value.Domain) {
+	for range ticker.C {
+		lastIP := ip
+		ip, err = publicIP()
+		if err != nil {
+			log.Print(err)
 			continue
 		}
 
-		err := ReplaceRecordsByType(client, value.Domain, "A", []DNSRecord{
-			{
-				Data: ip,
-				Name: "@",
-				TTL:  3600,
-			},
-			{
-				Data: ip,
-				Name: "*",
-				TTL:  3600,
-			},
-		})
-		if err != nil {
-			return err
+		if ip == lastIP {
+			log.Print("no changes")
+			continue
 		}
-		log.Printf("Updated %s", value.Domain)
-	}
-	return nil
-}
 
-// DNSRecord represents an individual DNS record
-type DNSRecord struct {
-	Data string `json:"data"`
-	Name string `json:"name"`
-	TTL  int    `json:"ttl"`
-}
-
-// ReplaceRecordsByType replaces all DNS Records for the specified Domain with
-// the specified Type
-func ReplaceRecordsByType(client *daddy.Client, domain string, dnstype string, body []DNSRecord) error {
-	enc, err := json.Marshal(body)
-	if err != nil {
-		return err
+		updateDNSRecords(registrars, domains, ip)
 	}
 
-	_, err = client.Put("/v1/domains/"+domain+"/records/"+dnstype, enc)
+}
 
-	return err
+func updateDNSRecords(registrars []Registrar, domains map[string][]string, ip string) {
+
+	for _, r := range registrars {
+		err := r.Load()
+		if err != nil {
+			log.Print(err)
+			continue
+		}
+
+		for domain, names := range domains {
+			has, err := r.HasDomain(domain)
+			if err != nil {
+				log.Print(err)
+				continue
+			}
+			if !has {
+				continue
+			}
+			log.Printf("update %s", domain)
+			err = r.UpdateDomain(ip, domain, names)
+			if err != nil {
+				log.Print(err)
+			}
+		}
+	}
 }
