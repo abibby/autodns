@@ -38,28 +38,27 @@ func main() {
 		&Godaddy{},
 		&EasyDNS{},
 	}
+	lastIP := ""
 
-	ticker := time.NewTicker(time.Hour)
-	ip, err := publicIP()
-	if err != nil {
-		log.Print(err)
-	} else {
-		updateDNSRecords(registrars, domains, ip)
-	}
-	for range ticker.C {
-		lastIP := ip
-		ip, err = publicIP()
+	run := func() {
+		ip, err := publicIP()
 		if err != nil {
 			log.Print(err)
-			continue
+			return
 		}
 
 		if ip == lastIP {
 			log.Print("no changes")
-			continue
+			return
 		}
-
+		log.Printf("new IP %s", ip)
 		updateDNSRecords(registrars, domains, ip)
+		lastIP = ip
+	}
+
+	run()
+	for range time.NewTicker(time.Hour).C {
+		run()
 	}
 
 }
