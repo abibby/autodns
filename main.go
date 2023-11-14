@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"strings"
@@ -55,8 +56,13 @@ func main() {
 		updateDNSRecords(registrars, domains, ip)
 		lastIP = ip
 	}
+	once := flag.Bool("once", false, "only run first check")
+	flag.Parse()
 
 	run()
+	if *once {
+		return
+	}
 	for range time.NewTicker(time.Hour).C {
 		run()
 	}
